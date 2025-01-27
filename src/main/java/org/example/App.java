@@ -1,50 +1,112 @@
 package org.example;
 
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.EntityManagerFactory;
-import jakarta.persistence.Persistence;
-import jakarta.persistence.TypedQuery;
+import jakarta.persistence.*;
+import org.hibernate.Session;
 
 import java.util.Arrays;
 
 public class App {
+    private static EntityManagerFactory emf = Persistence.createEntityManagerFactory("UserPU");
+
 
     public static void main(String[] args) {
+        // Persistiranje korisnika
+        User user = persistUser("john_doe", "john@example.com");
+        System.out.println("Persisted: " + user);
 
-        EntityManagerFactory emf = Persistence.createEntityManagerFactory("JpaExampleUnit");
+        // Odvajanje korisnika
+        detachUser(user);
+
+        // Ponovno povezivanje korisnika
+        User mergedUser = reattachUser(user);
+        System.out.println("Reattached: " + mergedUser);
+
+        // Brisanje korisnika
+        deleteUser(mergedUser);
+        System.out.println("User deleted.");
+    }
+
+    public static User persistUser(String username, String email) {
         EntityManager em = emf.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
 
-        // Create a meal
-        Meal meal = new Meal();
-        meal.setName("Pizza");
+        User user = new User();
+        user.setUsername(username);
+        user.setEmail(email);
 
-        // Create ingredients
-        Ingredient ingredient1 = new Ingredient();
-        ingredient1.setName("Cheese");
-        ingredient1.setMeal(meal);
+        User user1 = new User();
+        user1.setUsername(username);
+        user1.setEmail(email);
 
-        Ingredient ingredient2 = new Ingredient();
-        ingredient2.setName("Tomato Sauce");
-        ingredient2.setMeal(meal);
+        User user3 = new User();
+        user3.setUsername(username);
+        user3.setEmail(email);
 
-        // Set ingredients to meal
-        meal.setIngredients(Arrays.asList(ingredient1, ingredient2));
-
-        // Persist meal and ingredients
-        em.getTransaction().begin();
-        em.persist(meal);  // Meal will automatically persist ingredients due to cascading
-        em.getTransaction().commit();
-
-        // Fetch all meals
-        TypedQuery<Meal> query = em.createQuery("SELECT m FROM Meal m", Meal.class);
-        for (Meal m : query.getResultList()) {
-            System.out.println("Meal Name: " + m.getName());
-            for (Ingredient ing : m.getIngredients()) {
-                System.out.println("  Ingredient: " + ing.getName());
-            }
+        try {
+            tx.begin();
+            em.persist(user);
+            em.persist(user1);
+            em.persist(user3);
+            tx.commit();
+        } catch (Exception e) {
+            if (tx.isActive()) tx.rollback();
+            e.printStackTrace();
+        } finally {
+            em.close();
         }
 
-        em.close();
-        emf.close();
+        return user;
+    }
+
+    public static void detachUser(User user) {
+        EntityManager em = emf.createEntityManager();
+        try {
+            em.getTransaction().begin();
+            User managedUser = em.find(User.class, user.getId());
+            System.out.println("Managed before detach: " + managedUser);
+            em.detach(managedUser); // Odvajanje objekta iz sesije
+            System.out.println("Detached: " + managedUser);
+            em.getTransaction().commit();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            em.close();
+        }
+    }
+
+    public static User reattachUser(User user) {
+        EntityManager em = emf.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+
+        User mergedUser = null;
+        try {
+            tx.begin();
+            mergedUser = em.merge(user); // Ponovno povezivanje objekta
+            tx.commit();
+        } catch (Exception e) {
+            if (tx.isActive()) tx.rollback();
+            e.printStackTrace();
+        } finally {
+            em.close();
+        }
+
+        return mergedUser;
+    }
+
+    public static void deleteUser(User user) {
+        EntityManager em = emf.createEntityManager();
+        EntityTransaction tx = em.getTransaction();
+
+        try {
+            tx.begin();
+            User managedUser = em.find(User.class, user.getId());
+            em.remove(managedUser); // Brisanje objekta
+            tx.commit();
+        } catch (Exception e) {
+            if (tx.isActive()) tx.rollback();
+            e.printStackTrace();
+        } finally {
+            em.close();
+        }
     }
 }

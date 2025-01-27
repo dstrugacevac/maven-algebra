@@ -4,8 +4,8 @@
              version="3.0">
     <persistence-unit name="JpaExampleUnit" transaction-type="RESOURCE_LOCAL">
 
-        <class>org.example.Course</class>
-        <class>org.example.Student</class>
+        <class>org.example.User</class>
+
         <properties>
             <property name="jakarta.persistence.jdbc.url" value="jdbc:sqlserver://localhost:1433;databaseName=AdventureWorksOBP;encrypt=true;trustServerCertificate=true"/>
             <property name="jakarta.persistence.jdbc.user" value="root"/>

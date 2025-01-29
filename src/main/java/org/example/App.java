@@ -1,112 +1,117 @@
 package org.example;
 
-import jakarta.persistence.*;
+import org.hibernate.HibernateException;
 import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
+import org.hibernate.cfg.Configuration;
 
-import java.util.Arrays;
+import java.math.BigDecimal;
 
 public class App {
-    private static EntityManagerFactory emf = Persistence.createEntityManagerFactory("UserPU");
-
+    private static final SessionFactory sessionFactory = new Configuration().configure().buildSessionFactory();
 
     public static void main(String[] args) {
-        // Persistiranje korisnika
-        User user = persistUser("john_doe", "john@example.com");
-        System.out.println("Persisted: " + user);
 
-        // Odvajanje korisnika
-        detachUser(user);
+        deleteAllBankAccounts();
 
-        // Ponovno povezivanje korisnika
-        User mergedUser = reattachUser(user);
-        System.out.println("Reattached: " + mergedUser);
+        // Inicijalizacija računa
+        createAccount("HR12345", new BigDecimal("5000"));
+        createAccount("HR67890", new BigDecimal("2000"));
 
-        // Brisanje korisnika
-        deleteUser(mergedUser);
-        System.out.println("User deleted.");
+        // Pokretanje dva threada za simulaciju transakcija
+        Thread thread1 = new Thread(() -> {
+            System.out.println("[Thread 1] Stanje prije: " + findAccountByNumber("HR12345"));
+            System.out.println("[Thread 1] Stanje prije: " + findAccountByNumber("HR67890"));
+            transferMoney("HR12345", "HR67890", new BigDecimal("500"));
+            try {
+                Thread.sleep(5000); // Čekaj 5 sekundi
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println("[Thread 1] Stanje nakon 5 sekundi: " + findAccountByNumber("HR12345"));
+            System.out.println("[Thread 1] Stanje nakon 5 sekundi: " + findAccountByNumber("HR67890"));
+        });
+
+        Thread thread2 = new Thread(() -> {
+            System.out.println("[Thread 2] Stanje prije: " + findAccountByNumber("HR12345"));
+            System.out.println("[Thread 2] Stanje prije: " + findAccountByNumber("HR67890"));
+            transferMoney("HR67890", "HR12345", new BigDecimal("300"));
+            try {
+                Thread.sleep(3000); // Čekaj 3 sekunde
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println("[Thread 2] Stanje nakon 3 sekunde: " + findAccountByNumber("HR12345"));
+            System.out.println("[Thread 2] Stanje nakon 3 sekundi: " + findAccountByNumber("HR67890"));
+        });
+
+        thread1.start();
+        thread2.start();
     }
 
-    public static User persistUser(String username, String email) {
-        EntityManager em = emf.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
+    public static void deleteAllBankAccounts() {
+        try (Session session = sessionFactory.openSession()) {
+            Transaction tx = session.beginTransaction();
 
-        User user = new User();
-        user.setUsername(username);
-        user.setEmail(email);
+            session.createQuery("DELETE FROM BankAccount").executeUpdate();
 
-        User user1 = new User();
-        user1.setUsername(username);
-        user1.setEmail(email);
-
-        User user3 = new User();
-        user3.setUsername(username);
-        user3.setEmail(email);
-
-        try {
-            tx.begin();
-            em.persist(user);
-            em.persist(user1);
-            em.persist(user3);
             tx.commit();
-        } catch (Exception e) {
-            if (tx.isActive()) tx.rollback();
+        } catch (HibernateException e) {
             e.printStackTrace();
-        } finally {
-            em.close();
-        }
-
-        return user;
-    }
-
-    public static void detachUser(User user) {
-        EntityManager em = emf.createEntityManager();
-        try {
-            em.getTransaction().begin();
-            User managedUser = em.find(User.class, user.getId());
-            System.out.println("Managed before detach: " + managedUser);
-            em.detach(managedUser); // Odvajanje objekta iz sesije
-            System.out.println("Detached: " + managedUser);
-            em.getTransaction().commit();
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            em.close();
         }
     }
 
-    public static User reattachUser(User user) {
-        EntityManager em = emf.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
-
-        User mergedUser = null;
-        try {
-            tx.begin();
-            mergedUser = em.merge(user); // Ponovno povezivanje objekta
+    // 🏦 Kreiranje bankovnog računa
+    public static void createAccount(String accountNumber, BigDecimal balance) {
+        try (Session session = sessionFactory.openSession()) {
+            Transaction tx = session.beginTransaction();
+            BankAccount account = new BankAccount(accountNumber, balance);
+            session.persist(account);
             tx.commit();
-        } catch (Exception e) {
-            if (tx.isActive()) tx.rollback();
-            e.printStackTrace();
-        } finally {
-            em.close();
+            System.out.println("Račun kreiran: " + account);
         }
-
-        return mergedUser;
     }
 
-    public static void deleteUser(User user) {
-        EntityManager em = emf.createEntityManager();
-        EntityTransaction tx = em.getTransaction();
+    // 💰 Prijenos novca s jednog računa na drugi
+    public static void transferMoney(String fromAccountNumber, String toAccountNumber, BigDecimal amount) {
+        try (Session session = sessionFactory.openSession()) {
+            Transaction tx = session.beginTransaction();
 
-        try {
-            tx.begin();
-            User managedUser = em.find(User.class, user.getId());
-            em.remove(managedUser); // Brisanje objekta
+            BankAccount fromAccount = findAccountByNumber(fromAccountNumber);
+            BankAccount toAccount = findAccountByNumber(toAccountNumber);
+
+            // 🛑 Ako bilo koji račun ne postoji, prekini transakciju
+            if (fromAccount == null || toAccount == null) {
+                System.out.println("❌ ERROR: One of the accounts does not exist!");
+                tx.rollback();
+                return;
+            }
+
+            // 🏦 Provjera stanja računa
+            if (fromAccount.getBalance().compareTo(amount) < 0) {
+                System.out.println("❌ ERROR: Insufficient funds!");
+                tx.rollback();
+                return;
+            }
+
+            fromAccount.setBalance(fromAccount.getBalance().subtract(amount));
+            toAccount.setBalance(toAccount.getBalance().add(amount));
+            session.update(fromAccount);
+            session.update(toAccount);
+
+
             tx.commit();
-        } catch (Exception e) {
-            if (tx.isActive()) tx.rollback();
-            e.printStackTrace();
-        } finally {
-            em.close();
+            System.out.println("Prijenos uspješan: " + amount + " preneseno s računa " + fromAccount.getAccountNumber() + " na " + toAccount.getAccountNumber());
+        }
+    }
+
+    public static BankAccount findAccountByNumber(String accountNumber) {
+        try (Session session = sessionFactory.openSession()) {
+            String hql = "FROM BankAccount WHERE accountNumber = :accNum";
+            return session.createQuery(hql, BankAccount.class)
+                    .setParameter("accNum", accountNumber)
+                    .uniqueResult(); // Vraća jedan rezultat ili null
         }
     }
 }

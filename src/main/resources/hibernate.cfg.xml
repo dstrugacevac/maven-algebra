@@ -16,7 +16,7 @@
         <property name="hibernate.show_sql">false</property>
         <property name="hibernate.format_sql">false</property>
         <property name="hibernate.hbm2ddl.auto">update</property>
-        <property name="hibernate.connection.isolation">2</property> <!-- READ_COMMITTED -->
+        <property name="hibernate.connection.isolation">4</property> <!-- READ_COMMITTED -->
 
         <!-- Registracija entiteta -->
         <mapping class="org.example.BankAccount"/>
